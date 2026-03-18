@@ -1,0 +1,312 @@
+/* ── Reset & base ─────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg:           #353848;
+  --bg-card:      #111120;
+  --bg-input:     #0e0e1c;
+  --border:       #2a2a45;
+  --border-focus: #7c3aed;
+  --purple:       #8b5cf6;
+  --purple-dim:   #6d28d9;
+  --purple-glow:  rgba(139, 92, 246, 0.25);
+  --text:         #e2e8f0;
+  --text-muted:   #7c84a0;
+  --text-code:    #c4b5fd;
+  --error-bg:     rgba(239, 68, 68, 0.1);
+  --error-border: rgba(239, 68, 68, 0.4);
+  --error-text:   #fca5a5;
+  --radius:       10px;
+  --font-sans:    "Inter", system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", "Fira Code", monospace;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Page layout ─────────────────────────────────────────────── */
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60px 20px 80px;
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+.header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.logo {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.logo-bracket {
+  color: var(--purple);
+}
+
+.tagline {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.tagline code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--text-code);
+  background: rgba(139, 92, 246, 0.12);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* ── Main content ────────────────────────────────────────────── */
+.main {
+  width: 100%;
+  max-width: 820px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── URL input row ───────────────────────────────────────────── */
+.input-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.input-wrapper {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon {
+  position: absolute;
+  left: 14px;
+  font-size: 1rem;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.url-input {
+  width: 100%;
+  padding: 13px 16px 13px 40px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.url-input::placeholder {
+  color: var(--text-muted);
+}
+
+.url-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--purple-glow);
+}
+
+.url-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Generate button ─────────────────────────────────────────── */
+.generate-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 26px;
+  background: var(--purple);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
+}
+
+.generate-btn:hover:not(:disabled) {
+  background: var(--purple-dim);
+  box-shadow: 0 0 16px var(--purple-glow);
+}
+
+.generate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Spinner ─────────────────────────────────────────────────── */
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Error banner ────────────────────────────────────────────── */
+.error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius);
+  color: var(--error-text);
+  font-size: 0.9rem;
+}
+
+.error-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ── Output section ──────────────────────────────────────────── */
+.output-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.output-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+
+.output-label {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-code);
+  letter-spacing: 0.04em;
+}
+
+.output-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── Action buttons ──────────────────────────────────────────── */
+.action-btn {
+  padding: 5px 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.action-btn:hover {
+  border-color: var(--purple);
+  color: var(--text);
+}
+
+.action-btn.primary {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.4);
+  color: var(--purple);
+}
+
+.action-btn.primary:hover {
+  background: rgba(139, 92, 246, 0.25);
+  border-color: var(--purple);
+  color: #c4b5fd;
+}
+
+/* ── Output box ──────────────────────────────────────────────── */
+.output-box {
+  background: var(--bg-input);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.7;
+  padding: 20px;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 520px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────── */
+.output-box::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.output-box::-webkit-scrollbar-track {
+  background: transparent;
+}
+.output-box::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+.output-box::-webkit-scrollbar-thumb:hover {
+  background: var(--purple);
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .page {
+    padding: 40px 16px 60px;
+  }
+
+  .logo {
+    font-size: 1.6rem;
+  }
+
+  .input-row {
+    flex-direction: column;
+  }
+
+  .generate-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
