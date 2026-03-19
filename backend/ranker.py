@@ -25,7 +25,7 @@ _EXCLUDED_PATH_RE = re.compile(
     r"/login|/signin|/signup|/register"
     r"|/account(?:/|$)|/cart(?:/|$)|/checkout(?:/|$)"
     r"|/search(?:/|$|\?)"
-    r"|/tags?(?:/|$)|/archive(?:/|$)|/categories?(?:/|$)"
+    r"|/tags?(?:/|$)|/archive(?:/|$)|/categories?(?:/|$)|/changelog(?:/|$)"
     r"|/author(?:/|$)"
     r"|\.(?:pdf|zip|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|css|js)$",
     re.IGNORECASE,
