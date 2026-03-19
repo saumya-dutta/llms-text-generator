@@ -42,7 +42,7 @@ MAX_PHASE2_PAGES = 200
 # Many sites use meta descriptions as long product/article blurbs, so we
 # aggressively cap (or drop) them to keep llms.txt compact.
 MAX_META_DESCRIPTION_CHARS = 160
-META_DESCRIPTION_MAX_WORDS = 25
+META_DESCRIPTION_MAX_WORDS = 45
 HOMEPAGE_MAX_META_DESCRIPTION_CHARS = 300
 HOMEPAGE_META_DESCRIPTION_MAX_WORDS = 45
 

@@ -12,6 +12,7 @@ import logging
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel, HttpUrl
 
@@ -29,6 +30,17 @@ app = FastAPI(
     title="llms.txt Generator",
     description="Crawl any website and generate an llms.txt file per the llmstxt.org spec.",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://llms-text-generator-one.vercel.app",
+    ],
+    allow_methods=["POST", "GET"],
+    allow_headers=["Content-Type"],
 )
 
 

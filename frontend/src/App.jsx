@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 
-const API_BASE = "";  // empty = use Vite proxy; set to "http://localhost:8000" if running standalone
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 export default function App() {
   const [url, setUrl] = useState("");
