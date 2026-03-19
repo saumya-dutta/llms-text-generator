@@ -53,7 +53,7 @@ async def generate_llms_txt(request: GenerateRequest) -> Response:
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    "Could not crawl any pages from the provided URL. "
+                    "422:Could not crawl any pages from the provided URL. "
                     "The site may be blocking crawlers or the URL may be unreachable."
                 ),
             )
@@ -71,15 +71,24 @@ async def generate_llms_txt(request: GenerateRequest) -> Response:
         parsed = urlparse(url)
         site_title = parsed.netloc
         site_description = ""
+        rss_feeds = []
+        sitemap_url = f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"
 
         for page_url, node in pages_by_url.items():
             if node.path in ("/", "") and node.fetch_status == "ok":
                 site_title = node.title or node.h1 or parsed.netloc
-                site_description = node.meta_description
+                site_description = node.meta_description or ""
+                rss_feeds = list(node.rss_feeds or [])
                 break
 
         # --- Step 4: Format ---
-        content = format_llms_txt(pages_by_section, site_title, site_description)
+        content = format_llms_txt(
+            pages_by_section,
+            site_title,
+            site_description,
+            rss_feeds=rss_feeds,
+            sitemap_url=sitemap_url,
+        )
 
         logger.info(
             "Generated llms.txt for %s — %d sections, %d relevant pages",

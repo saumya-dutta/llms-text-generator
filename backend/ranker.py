@@ -8,10 +8,13 @@ Section names come from the crawler (nav-derived or path-segment fallback).
 No hardcoded section taxonomy here.
 """
 
+import logging
 import re
 from typing import Dict, List, Tuple
 
 from crawler import PageNode, normalize_url
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -29,8 +32,19 @@ _EXCLUDED_PATH_RE = re.compile(
 )
 
 # Absolute ceiling on pages per section.
-# _trim_section may cut earlier based on score gaps.
-_MAX_SECTION_PAGES = 20
+# _trim_section may cut earlier based on score gaps or repetitive cluster detection.
+_MAX_SECTION_PAGES = 10
+
+# Tighter cap for repetitive/inventory sections (identical descriptions, template pages).
+_MAX_REPETITIVE_PAGES = 4
+
+# To keep llms.txt short, show per-page `meta_description` only for the top
+# few pages in each section. The formatter always renders descriptions for
+# main sections when present.
+_META_DESCRIPTION_TOP_K_PER_SECTION = 3
+# If descriptions still look typically long even after crawler capping,
+# drop them entirely for the whole section (none-at-all mode).
+_CLEAR_SECTION_IF_MEDIAN_DESC_CHARS = 120
 
 
 # ---------------------------------------------------------------------------
@@ -125,17 +139,63 @@ def _canonical_key(node: PageNode, url: str) -> str:
 def _trim_section(pages: List[PageNode]) -> None:
     """
     Trim the sorted section list in place.
-    Stops at the first large score gap (next page scores < 50% of section top)
-    and caps at _MAX_SECTION_PAGES regardless.
+
+    1. Repetitive cluster check: if ≥3 pages share the same meta_description,
+       the section is a template/inventory list (e.g. arena tags, movie stubs).
+       Cap tightly at _MAX_REPETITIVE_PAGES.
+    2. Score gap: stop at the first page that scores < 50% of the section top.
+    3. Hard cap at _MAX_SECTION_PAGES regardless.
     """
     if len(pages) <= 1:
         return
+
+    # Repetitive cluster detection — identical descriptions are the clearest signal
+    # that pages are generated from a template rather than written individually.
+    if len(pages) >= 3:
+        desc_counts: Dict[str, int] = {}
+        for n in pages:
+            if n.meta_description:
+                desc_counts[n.meta_description] = desc_counts.get(n.meta_description, 0) + 1
+        if desc_counts and max(desc_counts.values()) >= 3:
+            top_desc, top_count = max(desc_counts.items(), key=lambda x: x[1])
+            section_name = pages[0].section
+            logger.info(
+                "Repetitive cluster in '%s': %d/%d pages share description %r — trimming to %d",
+                section_name, top_count, len(pages), top_desc[:60], _MAX_REPETITIVE_PAGES,
+            )
+            del pages[_MAX_REPETITIVE_PAGES:]
+            return
+
     top = pages[0].score
     for i in range(1, min(len(pages), _MAX_SECTION_PAGES)):
         if top > 0 and pages[i].score < top * 0.5:
             del pages[i:]
             return
     del pages[_MAX_SECTION_PAGES:]
+
+
+def _reduce_meta_descriptions(pages: List[PageNode]) -> None:
+    """
+    Reduce per-page descriptions to keep output compact.
+
+    Strategy:
+      1. If median non-empty description length is still large, clear all.
+      2. Otherwise, keep descriptions only for the top K pages in the section.
+    """
+    non_empty = [len(p.meta_description) for p in pages if p.meta_description]
+    if not non_empty:
+        return
+
+    non_empty.sort()
+    median_len = non_empty[len(non_empty) // 2]
+    if median_len > _CLEAR_SECTION_IF_MEDIAN_DESC_CHARS:
+        for p in pages:
+            p.meta_description = ""
+        return
+
+    # Keep only top-ranked pages' descriptions.
+    for i in range(_META_DESCRIPTION_TOP_K_PER_SECTION, len(pages)):
+        pages[i].meta_description = ""
 
 
 # ---------------------------------------------------------------------------
@@ -184,5 +244,6 @@ def rank(pages_by_url: Dict[str, PageNode]) -> Dict[str, List[PageNode]]:
     for pages in pages_by_section.values():
         pages.sort(key=lambda n: n.score, reverse=True)
         _trim_section(pages)
+        _reduce_meta_descriptions(pages)
 
     return pages_by_section

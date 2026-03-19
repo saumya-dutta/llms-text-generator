@@ -71,6 +71,9 @@ def format_llms_txt(
     pages_by_section: Dict[str, List[PageNode]],
     site_title: str = "",
     site_description: str = "",
+    *,
+    rss_feeds: List[str] | None = None,
+    sitemap_url: str = "",
 ) -> str:
     """
     Convert grouped, ranked pages into an llms.txt-formatted string.
@@ -136,6 +139,22 @@ def format_llms_txt(
                 label = _clean_title(raw_label, site_title)
                 url = node.canonical_url or node.url
                 lines.append(f"- [{label}]({url})")
+            lines.append("")
+
+    # --- Metadata / structure (keep at bottom) ---
+    if sitemap_url:
+        lines.append("## Sitemap")
+        lines.append("")
+        lines.append(sitemap_url)
+        lines.append("")
+
+    if rss_feeds:
+        feeds = [f for f in rss_feeds if f]
+        if feeds:
+            lines.append("## RSS/Atom feed")
+            lines.append("")
+            for f in feeds[:5]:
+                lines.append(f"- {f}")
             lines.append("")
 
     return "\n".join(lines)

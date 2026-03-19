@@ -38,6 +38,14 @@ MAX_SITEMAP_PAGES = 500
 # Phase 2: outbound links discovered from hub pages only
 MAX_PHASE2_PAGES = 200
 
+# llms.txt displays `PageNode.meta_description` next to each link.
+# Many sites use meta descriptions as long product/article blurbs, so we
+# aggressively cap (or drop) them to keep llms.txt compact.
+MAX_META_DESCRIPTION_CHARS = 160
+META_DESCRIPTION_MAX_WORDS = 25
+HOMEPAGE_MAX_META_DESCRIPTION_CHARS = 300
+HOMEPAGE_META_DESCRIPTION_MAX_WORDS = 45
+
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; LLMsTxtGenerator/1.0)",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -64,6 +72,7 @@ class PageNode:
     headings: List[str] = field(default_factory=list)
     main_text: str = ""
     word_count: int = 0
+    rss_feeds: List[str] = field(default_factory=list)
 
     # Section derived from the site's own nav labels + URL path segments.
     # Set during the post-processing pass after all pages are collected.
@@ -233,6 +242,22 @@ def _extract(
     m = soup.find("meta", attrs={"name": re.compile(r"^description$", re.I)})
     if m:
         meta_desc = m.get("content", "").strip()
+        if meta_desc:
+            # Collapse whitespace so length/word-count checks are stable.
+            meta_desc = " ".join(meta_desc.split())
+            words = meta_desc.split()
+            is_homepage = (urlparse(url).path.rstrip("/") or "/") == "/"
+            max_words = HOMEPAGE_META_DESCRIPTION_MAX_WORDS if is_homepage else META_DESCRIPTION_MAX_WORDS
+            max_chars = HOMEPAGE_MAX_META_DESCRIPTION_CHARS if is_homepage else MAX_META_DESCRIPTION_CHARS
+
+            # If the description is a long paragraph (common on ecommerce),
+            # drop it entirely rather than truncating mid-sentence.
+            if len(words) > max_words:
+                meta_desc = ""
+            elif len(meta_desc) > max_chars:
+                # Truncate on a word boundary and add an ASCII ellipsis.
+                cut = meta_desc[:max_chars].rsplit(" ", 1)[0].strip()
+                meta_desc = (cut + "...") if cut else meta_desc[:max_chars] + "..."
 
     canonical = ""
     c = soup.find("link", attrs={"rel": "canonical"})
@@ -249,6 +274,27 @@ def _extract(
     raw_text = (body or soup).get_text(separator=" ", strip=True)
     main_text = re.sub(r"\s+", " ", raw_text).strip()[:8000]
     word_count = len(main_text.split())
+
+    # RSS / Atom feeds (usually present on the homepage).
+    # Example: <link rel="alternate" type="application/rss+xml" href="/index.xml" title="RSS" />
+    feeds: List[str] = []
+    for link in soup.find_all("link", href=True):
+        rel = " ".join(link.get("rel") or [])
+        if "alternate" not in rel.lower():
+            continue
+        t = (link.get("type") or "").lower()
+        if "rss" in t or "atom" in t or "xml" in t:
+            href = urljoin(url, link["href"])
+            ph = urlparse(href)
+            if ph.scheme in ("http", "https"):
+                feeds.append(normalize_url(href))
+    # de-dup but preserve order
+    seen_f: Set[str] = set()
+    rss_feeds: List[str] = []
+    for f in feeds:
+        if f not in seen_f:
+            seen_f.add(f)
+            rss_feeds.append(f)
 
     # Nav links with anchor text — first occurrence per URL wins.
     # Collected from <nav> and <header> elements only.
@@ -283,6 +329,7 @@ def _extract(
         "headings": headings[:20],
         "main_text": main_text,
         "word_count": word_count,
+        "rss_feeds": rss_feeds,
     }
     return meta, internal_links, nav_links
 
@@ -342,6 +389,7 @@ async def _fetch_batch(
                 node.headings = meta["headings"]
                 node.main_text = meta["main_text"]
                 node.word_count = meta["word_count"]
+                node.rss_feeds = meta.get("rss_feeds", [])
                 node.fetch_status = "ok"
                 return url, node, internal_links, nav_links
 
@@ -510,5 +558,12 @@ async def crawl(
             if n_segments == 1:
                 node.section = "Key Pages"
 
-        logger.info("Crawl complete: %d pages collected", len(pages_by_url))
+        sitemap_sourced = sum(1 for n in pages_by_url.values() if n.in_sitemap)
+        hub_only = sum(1 for n in pages_by_url.values() if not n.in_sitemap)
+        logger.info(
+            "Crawl complete: %d pages total — %d from sitemap, %d discovered via hub outbound links",
+            len(pages_by_url),
+            sitemap_sourced,
+            hub_only,
+        )
         return pages_by_url
