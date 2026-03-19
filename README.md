@@ -1,6 +1,6 @@
 # llms.txt Generator
 
-Crawl any website and generate an [llms.txt](https://llmstxt.org) file — a structured, LLM-readable index of a site's most important pages.
+Crawl any website and generate an [llms.txt](https://llmstxt.org) file — a structured, LLM-readable index of a site's most important pages. Check it out here! https://llms-text-generator-one.vercel.app/ 
 
 ## Running Locally
 
@@ -31,3 +31,7 @@ UI runs at `http://localhost:5173`. The Vite dev server proxies `/generate` to t
 ## Tech Spec
 
 <!-- Add Google Doc link here -->
+
+## Screenshots / Demo Video
+
+image.png

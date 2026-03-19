@@ -33,7 +33,7 @@ _EXCLUDED_PATH_RE = re.compile(
 
 # Absolute ceiling on pages per section.
 # _trim_section may cut earlier based on score gaps or repetitive cluster detection.
-_MAX_SECTION_PAGES = 10
+_MAX_SECTION_PAGES = 20
 
 # Tighter cap for repetitive/inventory sections (identical descriptions, template pages).
 _MAX_REPETITIVE_PAGES = 4
@@ -168,7 +168,7 @@ def _trim_section(pages: List[PageNode]) -> None:
 
     top = pages[0].score
     for i in range(1, min(len(pages), _MAX_SECTION_PAGES)):
-        if top > 0 and pages[i].score < top * 0.5:
+        if top > 0 and pages[i].score < top * 0.15:
             del pages[i:]
             return
     del pages[_MAX_SECTION_PAGES:]

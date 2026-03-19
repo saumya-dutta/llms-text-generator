@@ -34,7 +34,7 @@ REQUEST_TIMEOUT = 8.0
 DEFAULT_MAX_PAGES = 500
 
 # Phase 1: fetch homepage + sitemap URLs (hard cap to avoid sitemap explosion)
-MAX_SITEMAP_PAGES = 150
+MAX_SITEMAP_PAGES = 500
 # Phase 2: outbound links discovered from hub pages only
 MAX_PHASE2_PAGES = 75
 

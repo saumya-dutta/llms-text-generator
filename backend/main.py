@@ -79,6 +79,7 @@ async def generate_llms_txt(request: GenerateRequest) -> Response:
         parsed = urlparse(url)
         site_title = parsed.netloc
         site_description = ""
+        homepage_main_text = ""
         rss_feeds = []
         sitemap_url = f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"
 
@@ -86,6 +87,7 @@ async def generate_llms_txt(request: GenerateRequest) -> Response:
             if node.path in ("/", "") and node.fetch_status == "ok":
                 site_title = node.title or node.h1 or parsed.netloc
                 site_description = node.meta_description or ""
+                homepage_main_text = node.main_text or ""
                 rss_feeds = list(node.rss_feeds or [])
                 break
 
@@ -94,6 +96,7 @@ async def generate_llms_txt(request: GenerateRequest) -> Response:
             pages_by_section,
             site_title,
             site_description,
+            homepage_main_text=homepage_main_text,
             rss_feeds=rss_feeds,
             sitemap_url=sitemap_url,
         )

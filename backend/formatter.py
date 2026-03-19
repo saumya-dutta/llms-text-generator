@@ -12,9 +12,19 @@ Spec (from llmstxt.org):
 """
 
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from crawler import PageNode
+
+
+def _excerpt(text: str, max_chars: int = 500) -> str:
+    text = " ".join((text or "").split()).strip()
+    if not text:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    cut = text[:max_chars].rsplit(" ", 1)[0].strip()
+    return (cut + "...") if cut else text[:max_chars] + "..."
 
 
 def _clean_title(title: str, site_title: str = "") -> str:
@@ -72,6 +82,7 @@ def format_llms_txt(
     site_title: str = "",
     site_description: str = "",
     *,
+    homepage_main_text: str = "",
     rss_feeds: List[str] | None = None,
     sitemap_url: str = "",
 ) -> str:
@@ -79,9 +90,10 @@ def format_llms_txt(
     Convert grouped, ranked pages into an llms.txt-formatted string.
 
     Args:
-        pages_by_section: output of ranker.rank()
-        site_title:       used for the H1 header
-        site_description: used for the blockquote summary
+        pages_by_section:   output of ranker.rank()
+        site_title:         used for the H1 header
+        site_description:   used for the blockquote summary (meta_description preferred)
+        homepage_main_text: fallback if site_description is empty
     """
     lines: List[str] = []
 
@@ -90,8 +102,9 @@ def format_llms_txt(
     lines.append("")
 
     # --- Blockquote description (optional) ---
-    if site_description:
-        lines.append(f"> {site_description}")
+    description = site_description or _excerpt(homepage_main_text, max_chars=500)
+    if description:
+        lines.append(f"> {description}")
         lines.append("")
 
     # --- Sort sections ---
