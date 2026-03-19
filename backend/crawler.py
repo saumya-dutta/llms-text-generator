@@ -29,14 +29,14 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
-MAX_CONCURRENT = 10
-REQUEST_TIMEOUT = 15.0
+MAX_CONCURRENT = 20
+REQUEST_TIMEOUT = 8.0
 DEFAULT_MAX_PAGES = 500
 
 # Phase 1: fetch homepage + sitemap URLs (hard cap to avoid sitemap explosion)
-MAX_SITEMAP_PAGES = 500
+MAX_SITEMAP_PAGES = 150
 # Phase 2: outbound links discovered from hub pages only
-MAX_PHASE2_PAGES = 200
+MAX_PHASE2_PAGES = 75
 
 # llms.txt displays `PageNode.meta_description` next to each link.
 # Many sites use meta descriptions as long product/article blurbs, so we
