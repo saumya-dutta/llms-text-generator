@@ -9,7 +9,6 @@ Endpoints:
 """
 
 import logging
-import os
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException
@@ -33,12 +32,9 @@ app = FastAPI(
     version="1.0.0",
 )
 
-_default_origins = "http://localhost:5173,http://localhost:3000,https://llms-text-generator-one.vercel.app"
-_origins = os.environ.get("ALLOWED_ORIGINS", _default_origins).split(",")
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_origins,
+    allow_origins=["*"],
     allow_methods=["POST", "GET"],
     allow_headers=["Content-Type"],
 )
