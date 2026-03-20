@@ -2,6 +2,8 @@
 
 Crawl any website and generate an [llms.txt](https://llmstxt.org) file — a structured, LLM-readable index of a site's most important pages. Check it out here! https://llms-text-generator-one.vercel.app/ 
 
+Backend hosted on: https://believable-wonder-production.up.railway.app/ 
+
 ## Running Locally
 
 ### Backend

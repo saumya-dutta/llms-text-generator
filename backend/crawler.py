@@ -29,33 +29,45 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
+# caps / limits to avoid site explosion problems
 MAX_CONCURRENT = 20
+# request timeout is for crawling / extracting metadata from pages
 REQUEST_TIMEOUT = 8.0
 DEFAULT_MAX_PAGES = 500
 
-# Phase 1: fetch homepage + sitemap URLs (hard cap to avoid sitemap explosion)
 MAX_SITEMAP_PAGES = 500
-# Phase 2: outbound links discovered from hub pages only
 MAX_PHASE2_PAGES = 75
 
-# llms.txt displays `PageNode.meta_description` next to each link.
-# Many sites use meta descriptions as long product/article blurbs, so we
-# aggressively cap (or drop) them to keep llms.txt compact.
+# these caps are for the `PageNode.meta_description` we see next to each link
+# we add these caps to keep them compact 
 MAX_META_DESCRIPTION_CHARS = 160
 META_DESCRIPTION_MAX_WORDS = 45
 HOMEPAGE_MAX_META_DESCRIPTION_CHARS = 300
 HOMEPAGE_META_DESCRIPTION_MAX_WORDS = 45
 
+# headers to override getting blocked by sites
+# if we dont add the user-agent, the website may calssify us as a bot 
+# other headers needed for language types 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; LLMsTxtGenerator/1.0)",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
 }
 
-# Minimal override: legal pages always map to "Legal" so the formatter can place
-# them under ## Optional regardless of how the site's nav labels them.
+# override: extracting legal pages
 _LEGAL_PATH_RE = re.compile(
     r"/legal|/privacy|/terms|/cookies|/tos|/gdpr|/eula|/disclaimer",
+    re.IGNORECASE,
+)
+
+# paths to skip entirely — no point crawling pages the ranker will exclude anyway
+_EXCLUDED_PATH_RE = re.compile(
+    r"/login|/signin|/signup|/register"
+    r"|/account(?:/|$)|/cart(?:/|$)|/checkout(?:/|$)"
+    r"|/search(?:/|$|\?)"
+    r"|/tags?(?:/|$)|/archive(?:/|$)|/categories?(?:/|$)|/changelog(?:/|$)"
+    r"|/author(?:/|$)"
+    r"|\.(?:pdf|zip|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|css|js)$",
     re.IGNORECASE,
 )
 
@@ -96,7 +108,7 @@ class PageNode:
 
 
 def normalize_url(url: str) -> str:
-    """Lowercase scheme/host, strip query string, fragment, and trailing slash."""
+    """lower cases url, strips query strings that contain '?', strips fragments '#', strips trailing slash"""
     try:
         p = urlparse(url)
         path = p.path.rstrip("/") or "/"
@@ -107,7 +119,7 @@ def normalize_url(url: str) -> str:
 
 def _derive_section(path: str, nav_labels: Dict[str, str]) -> str:
     """
-    Assign a section name for a page.
+    assigning a section name for a page.
 
     Priority:
       1. Legal path match  → "Legal" (hardcoded so formatter's ## Optional works)
@@ -148,12 +160,12 @@ def _derive_section(path: str, nav_labels: Dict[str, str]) -> str:
 
 def _is_hub(node: PageNode, homepage_links: Set[str]) -> bool:
     """
-    Return True if a page is a hub worth expanding in Phase 2.
+    determines if a page is a hub worth expanding in Phase 2 by returning true or false
 
-    Hub criteria (any one suffices):
-      - Short URL path (≤ 2 non-empty segments): /blog/, /docs/guides/
-      - Directly linked from the homepage
-      - Appears in multiple pages' navs
+    hub criteria (any one suffices):
+      - short URL path (≤ 2 non-empty segments): /blog/, /docs/guides/
+      - directly linked from the homepage
+      - appears in multiple pages' navs
     """
     n_segments = len([s for s in node.path.split("/") if s])
     return (
@@ -164,7 +176,7 @@ def _is_hub(node: PageNode, homepage_links: Set[str]) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Robots / Sitemap helpers
+# robots.txt / sitemap.xml helper functions
 # ---------------------------------------------------------------------------
 
 async def _fetch_robots(base_url: str, client: httpx.AsyncClient) -> RobotFileParser:
@@ -212,7 +224,7 @@ async def _fetch_sitemap_urls(base_url: str, client: httpx.AsyncClient) -> Set[s
 
 
 # ---------------------------------------------------------------------------
-# HTML extraction
+# html extraction by page
 # ---------------------------------------------------------------------------
 
 def _extract(
@@ -231,6 +243,37 @@ def _extract(
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
 
+    # nav_links and internal_links must be extracted before nav/header/footer
+    # are removed, so links that only exist in the nav are still discovered.
+
+    # nav links with anchor text — collected from <nav> and <header> only.
+    nav_links: Dict[str, str] = {}
+    for nav_el in soup.find_all(["nav", "header"]):
+        for a in nav_el.find_all("a", href=True):
+            href = urljoin(url, a["href"])
+            ph = urlparse(href)
+            if ph.netloc == base_domain:
+                norm = normalize_url(href)
+                text = a.get_text(strip=True)
+                if text and norm not in nav_links:
+                    nav_links[norm] = text
+
+    # all internal links (deduplicated, order-preserved)
+    seen: Set[str] = set()
+    internal_links: List[str] = []
+    for a in soup.find_all("a", href=True):
+        href = urljoin(url, a["href"])
+        ph = urlparse(href)
+        if ph.netloc == base_domain and ph.scheme in ("http", "https"):
+            norm = normalize_url(href)
+            if norm not in seen:
+                seen.add(norm)
+                internal_links.append(norm)
+
+    # strip nav/header/footer so main_text contains only page content.
+    for tag in soup(["nav", "header", "footer"]):
+        tag.decompose()
+
     def _text(selector, **kw) -> str:
         el = soup.find(selector, **kw)
         return el.get_text(strip=True) if el else ""
@@ -243,7 +286,7 @@ def _extract(
     if m:
         meta_desc = m.get("content", "").strip()
         if meta_desc:
-            # Collapse whitespace so length/word-count checks are stable.
+            # collapse whitespace so length/word-count checks are stable.
             meta_desc = " ".join(meta_desc.split())
             words = meta_desc.split()
             is_homepage = (urlparse(url).path.rstrip("/") or "/") == "/"
@@ -296,31 +339,6 @@ def _extract(
             seen_f.add(f)
             rss_feeds.append(f)
 
-    # Nav links with anchor text — first occurrence per URL wins.
-    # Collected from <nav> and <header> elements only.
-    nav_links: Dict[str, str] = {}
-    for nav_el in soup.find_all(["nav", "header"]):
-        for a in nav_el.find_all("a", href=True):
-            href = urljoin(url, a["href"])
-            ph = urlparse(href)
-            if ph.netloc == base_domain:
-                norm = normalize_url(href)
-                text = a.get_text(strip=True)
-                if text and norm not in nav_links:
-                    nav_links[norm] = text
-
-    # All internal links (deduplicated, order-preserved)
-    seen: Set[str] = set()
-    internal_links: List[str] = []
-    for a in soup.find_all("a", href=True):
-        href = urljoin(url, a["href"])
-        ph = urlparse(href)
-        if ph.netloc == base_domain and ph.scheme in ("http", "https"):
-            norm = normalize_url(href)
-            if norm not in seen:
-                seen.add(norm)
-                internal_links.append(norm)
-
     meta = {
         "title": title,
         "meta_description": meta_desc,
@@ -335,7 +353,7 @@ def _extract(
 
 
 # ---------------------------------------------------------------------------
-# Batch fetcher — fetches a fixed set of URLs concurrently (no BFS)
+# batch fetcher — fetches a fixed set of URLs concurrently (no BFS optimization!!)
 # ---------------------------------------------------------------------------
 
 async def _fetch_batch(
@@ -419,7 +437,7 @@ async def _fetch_batch(
 
 
 # ---------------------------------------------------------------------------
-# Main crawl entry point
+# main crawl entry point
 # ---------------------------------------------------------------------------
 
 async def crawl(
@@ -471,7 +489,7 @@ async def crawl(
                 break
             pu = urlparse(su)
             if pu.netloc == base_domain and pu.scheme in ("http", "https"):
-                if su not in seen_urls:
+                if su not in seen_urls and not _EXCLUDED_PATH_RE.search(pu.path):
                     seen_urls.add(su)
                     phase1_urls.append(su)
 
@@ -480,7 +498,6 @@ async def crawl(
             phase1_urls, sitemap_urls, base_domain, robots, client, source_label="sitemap"
         )
 
-        # Aggregate link signals from Phase 1
         homepage_links: Set[str] = set(p1_outbound.get(norm_start, []))
         homepage_nav_labels: Dict[str, str] = p1_nav.get(norm_start, {})
         nav_link_counts: Dict[str, int] = {}
@@ -498,7 +515,7 @@ async def crawl(
             node.nav_link_count = nav_link_counts.get(url, 0)
 
         # ----------------------------------------------------------------
-        # Hub detection: which Phase 1 pages are worth expanding?
+        # hub detection: which Phase 1 pages are worth expanding?
         # ----------------------------------------------------------------
         phase2_candidates: Set[str] = set()
         for url, node in p1_pages.items():
@@ -526,7 +543,7 @@ async def crawl(
             phase2_urls, sitemap_urls, base_domain, robots, client, source_label="hub_outbound"
         )
 
-        # Accumulate Phase 2 link signals
+        # accumulate phase 2 link signals
         for url, links in p2_outbound.items():
             for link in links:
                 inlink_counts[link] = inlink_counts.get(link, 0) + 1
@@ -543,16 +560,14 @@ async def crawl(
                 break
             pages_by_url[url] = node
 
-        # ----------------------------------------------------------------
-        # Post-processing: apply aggregated signals and derive sections
-        # ----------------------------------------------------------------
+        # post-processing
         for url, node in pages_by_url.items():
             if url in homepage_links:
                 node.linked_from_homepage = True
             node.nav_link_count = nav_link_counts.get(url, 0)
             node.internal_inlink_count = inlink_counts.get(url, 0)
             node.section = _derive_section(node.path, homepage_nav_labels)
-            # Single-segment paths are top-level hub pages — always "Key Pages"
+            # single-segment paths are top-level hub pages — always "Key Pages"
             # regardless of whether the nav is JS-rendered or not.
             n_segments = len([s for s in node.path.split("/") if s])
             if n_segments == 1:

@@ -4,52 +4,21 @@ ranker.py — score, filter, deduplicate, and group PageNodes into sections.
 Input:  pages_by_url: Dict[str, PageNode]   (from crawler)
 Output: pages_by_section: Dict[str, List[PageNode]]  (sorted by score desc)
 
-Section names come from the crawler (nav-derived or path-segment fallback).
-No hardcoded section taxonomy here.
 """
 
 import logging
-import re
 from typing import Dict, List, Tuple
 
-from crawler import PageNode, normalize_url
+from crawler import PageNode, normalize_url, _EXCLUDED_PATH_RE
 
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-_EXCLUDED_PATH_RE = re.compile(
-    r"/login|/signin|/signup|/register"
-    r"|/account(?:/|$)|/cart(?:/|$)|/checkout(?:/|$)"
-    r"|/search(?:/|$|\?)"
-    r"|/tags?(?:/|$)|/archive(?:/|$)|/categories?(?:/|$)|/changelog(?:/|$)"
-    r"|/author(?:/|$)"
-    r"|\.(?:pdf|zip|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|css|js)$",
-    re.IGNORECASE,
-)
-
-# Absolute ceiling on pages per section.
-# _trim_section may cut earlier based on score gaps or repetitive cluster detection.
+# hard coded limits
+# pages per section
 _MAX_SECTION_PAGES = 20
 
-# Tighter cap for repetitive/inventory sections (identical descriptions, template pages).
+# repetitive page
 _MAX_REPETITIVE_PAGES = 4
-
-# To keep llms.txt short, show per-page `meta_description` only for the top
-# few pages in each section. The formatter always renders descriptions for
-# main sections when present.
-_META_DESCRIPTION_TOP_K_PER_SECTION = 3
-# If descriptions still look typically long even after crawler capping,
-# drop them entirely for the whole section (none-at-all mode).
-_CLEAR_SECTION_IF_MEDIAN_DESC_CHARS = 120
-
-
-# ---------------------------------------------------------------------------
-# Scoring
-# ---------------------------------------------------------------------------
 
 def _compute_score(node: PageNode) -> Tuple[float, List[str]]:
     score = 0.0
@@ -61,13 +30,13 @@ def _compute_score(node: PageNode) -> Tuple[float, List[str]]:
         sign = "+" if pts >= 0 else ""
         reasons.append(f"{sign}{pts:.0f} {label}")
 
-    # --- Sitemap / robots ---
+    # --- links in sitemap / robots ---
     if node.in_sitemap:
         add(2, "in_sitemap")
     if node.allowed_by_robots:
         add(1, "allowed_by_robots")
 
-    # --- Metadata completeness ---
+    # --- metadata completeness ---
     if node.title:
         add(1, "has_title")
     if node.meta_description:
@@ -79,7 +48,7 @@ def _compute_score(node: PageNode) -> Tuple[float, List[str]]:
     if len(node.headings) >= 2:
         add(1, "has_multiple_headings")
 
-    # --- Word count ---
+    # --- word count scoring ---
     wc = node.word_count
     if wc > 500:
         add(2, "word_count>500")
@@ -90,7 +59,7 @@ def _compute_score(node: PageNode) -> Tuple[float, List[str]]:
     if wc < 50:
         add(-2, "word_count<50")   # stacks with above → total -4
 
-    # --- Link signals ---
+    # --- link signals ---
     if node.linked_from_homepage:
         add(3, "linked_from_homepage")
     if node.nav_link_count > 0:
@@ -98,7 +67,7 @@ def _compute_score(node: PageNode) -> Tuple[float, List[str]]:
     if node.internal_inlink_count > 5:
         add(2, "high_inlinks")
 
-    # --- URL depth (number of non-empty path segments) ---
+    # --- url depth (number of non-empty path segments) ---
     n_segments = len([s for s in node.path.split("/") if s])
     if n_segments == 0:
         add(1, "homepage")
@@ -111,25 +80,24 @@ def _compute_score(node: PageNode) -> Tuple[float, List[str]]:
 
     return score, reasons
 
-
-# ---------------------------------------------------------------------------
-# Exclusion
-# ---------------------------------------------------------------------------
-
 def _should_exclude(node: PageNode) -> Tuple[bool, str]:
-    if node.fetch_status != "ok":
-        return True, f"fetch_status={node.fetch_status}"
-    if not node.allowed_by_robots:
-        return True, "blocked_by_robots"
-    if _EXCLUDED_PATH_RE.search(node.path):
-        return True, "excluded_path_pattern"
-    if node.word_count < 30 and not node.title and not node.h1:
-        return True, "thin_content"
-    return False, ""
+    """
+    excluded if:
+    1. failed fetches
+    2. blocked by robots.txt
+    3. excluded path patterns from _EXCLUDED_PATH_RE
+    4. thin content (less than 30 words and no title or h1)
+    """
+    return (
+        node.fetch_status != "ok" or
+        not node.allowed_by_robots or
+        _EXCLUDED_PATH_RE.search(node.path) or
+        (node.word_count < 30 and not node.title and not node.h1)
+    )
 
 
 def _canonical_key(node: PageNode, url: str) -> str:
-    """Return canonical URL if it looks absolute, else fall back to the page URL."""
+    """ return canonical URL if it looks absolute, else fall back to the page URL."""
     c = node.canonical_url
     if c and c.startswith(("http://", "https://")):
         return normalize_url(c)
@@ -138,7 +106,7 @@ def _canonical_key(node: PageNode, url: str) -> str:
 
 def _trim_section(pages: List[PageNode]) -> None:
     """
-    Trim the sorted section list in place.
+    trim the sorted section list in place.
 
     1. Repetitive cluster check: if ≥3 pages share the same meta_description,
        the section is a template/inventory list (e.g. arena tags, movie stubs).
@@ -173,29 +141,6 @@ def _trim_section(pages: List[PageNode]) -> None:
             return
     del pages[_MAX_SECTION_PAGES:]
 
-
-def _reduce_meta_descriptions(pages: List[PageNode]) -> None:
-    """
-    Reduce per-page descriptions to keep output compact.
-
-    Strategy:
-      1. If median non-empty description length is still large, clear all.
-      2. Otherwise, keep descriptions only for the top K pages in the section.
-    """
-    non_empty = [len(p.meta_description) for p in pages if p.meta_description]
-    if not non_empty:
-        return
-
-    non_empty.sort()
-    median_len = non_empty[len(non_empty) // 2]
-    if median_len > _CLEAR_SECTION_IF_MEDIAN_DESC_CHARS:
-        for p in pages:
-            p.meta_description = ""
-        return
-
-    # Keep only top-ranked pages' descriptions.
-    for i in range(_META_DESCRIPTION_TOP_K_PER_SECTION, len(pages)):
-        pages[i].meta_description = ""
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +189,5 @@ def rank(pages_by_url: Dict[str, PageNode]) -> Dict[str, List[PageNode]]:
     for pages in pages_by_section.values():
         pages.sort(key=lambda n: n.score, reverse=True)
         _trim_section(pages)
-        _reduce_meta_descriptions(pages)
 
     return pages_by_section
