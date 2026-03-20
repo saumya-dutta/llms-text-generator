@@ -254,7 +254,8 @@ def _extract(
             ph = urlparse(href)
             if ph.netloc == base_domain:
                 norm = normalize_url(href)
-                text = a.get_text(strip=True)
+                raw = a.get_text(separator="\n", strip=True)
+                text = next((l for l in raw.splitlines() if l.strip()), "").strip()
                 if text and norm not in nav_links:
                     nav_links[norm] = text
 
