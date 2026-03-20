@@ -24,6 +24,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
@@ -83,12 +84,19 @@ async def generate_llms_txt(request: GenerateRequest) -> Response:
         rss_feeds = []
         sitemap_url = f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"
 
+        start_path = parsed.path.rstrip("/") or "/"
         for page_url, node in pages_by_url.items():
-            if node.path in ("/", "") and node.fetch_status == "ok":
+            if node.path == start_path and node.fetch_status == "ok":
                 site_title = node.title or node.h1 or parsed.netloc
                 site_description = node.meta_description or ""
                 homepage_main_text = node.main_text or ""
                 rss_feeds = list(node.rss_feeds or [])
+                # logger.info(
+                #     "Homepage — title: %r | meta_description: %r | main_text length: %d",
+                #     site_title,
+                #     site_description or "(none)",
+                #     len(homepage_main_text),
+                # )
                 break
 
         # --- Step 4: Format ---

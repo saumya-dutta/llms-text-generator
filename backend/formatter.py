@@ -119,8 +119,11 @@ def format_llms_txt(
             raw_label = node.title or node.h1 or node.path
             label = _clean_title(raw_label, site_title)
             url = node.canonical_url or node.url
-            if include_desc and node.meta_description:
-                lines.append(f"- [{label}]({url}): {node.meta_description}")
+            desc = node.meta_description or (
+                _excerpt(node.main_text, max_chars=160) if node.main_text else ""
+            )
+            if include_desc and desc:
+                lines.append(f"- [{label}]({url}): {desc}")
             else:
                 lines.append(f"- [{label}]({url})")
         lines.append("")

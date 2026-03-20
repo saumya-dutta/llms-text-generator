@@ -412,7 +412,7 @@ async def _fetch_batch(
                 return url, node, internal_links, nav_links
 
             except httpx.RequestError as exc:
-                logger.warning("Request error %s: %s", url, exc)
+                logger.debug("Request error %s: %s", url, exc)
                 node.fetch_status = "failed"
                 return url, node, [], {}
 
