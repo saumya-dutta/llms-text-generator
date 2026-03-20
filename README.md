@@ -36,4 +36,6 @@ UI runs at `http://localhost:5173`. The Vite dev server proxies `/generate` to t
 
 ## Screenshots / Demo Video
 
-image.png
+Video: https://vimeo.com/1175540149 
+
+<img width="2864" height="1254" alt="image" src="https://github.com/user-attachments/assets/b86a3fe6-8b8c-432d-9197-ba6c13346062" />
