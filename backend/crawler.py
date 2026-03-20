@@ -19,7 +19,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Set, Tuple
 from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.robotparser import RobotFileParser
 import xml.etree.ElementTree as ET
@@ -104,7 +104,7 @@ class PageNode:
     score: float = 0.0
     score_reasons: List[str] = field(default_factory=list)
     is_relevant: bool = False
-    excluded_reason: Optional[str] = None
+    excluded: bool = False
 
 
 def normalize_url(url: str) -> str:

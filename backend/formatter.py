@@ -2,6 +2,7 @@
 formatter.py — render pages_by_section into an llms.txt file.
 
 Spec (from llmstxt.org):
+
   # Title                          ← required H1
   > Optional description           ← blockquote summary
   Optional prose paragraphs
@@ -9,6 +10,7 @@ Spec (from llmstxt.org):
   - [Link title](url): description ← file list entries
   ## Optional                      ← secondary / skippable content
   - [Link title](url)
+
 """
 
 import re
@@ -29,28 +31,22 @@ def _excerpt(text: str, max_chars: int = 500) -> str:
 
 def _clean_title(title: str, site_title: str = "") -> str:
     """
-    Strip site-name suffixes from page titles so that:
+    strip the site-name suffixes from page titles so that:
       'Balance Settings | Stripe API Reference'  → 'Balance Settings'
       'Receive payouts | Stripe Documentation'   → 'Receive payouts'
       'Testing'                                  → 'Testing'
 
-    Strategy: strip the last ` | …`, ` - …`, or ` — …` segment.
-    Also strips the site_title itself if it appears as a suffix.
     """
-    # Strip known site_title suffix first (exact match after separator)
     if site_title:
         for sep in (" | ", " - ", " — "):
             suffix = sep + site_title
             if title.endswith(suffix):
                 return title[: -len(suffix)].strip()
 
-    # Fallback: strip everything after the last separator
     for sep in (" | ", " — "):
         if sep in title:
             return title.rsplit(sep, 1)[0].strip()
 
-    # For " - " be conservative: only strip if what follows looks like a brand
-    # (short, title-case, no digits) to avoid stripping from real hyphenated titles.
     if " - " in title:
         parts = title.rsplit(" - ", 1)
         suffix = parts[1].strip()
@@ -59,21 +55,10 @@ def _clean_title(title: str, site_title: str = "") -> str:
 
     return title
 
-# Preferred display order for sections
-_SECTION_ORDER: List[str] = [
-    "Overview",
-    "Key Pages",
-    "Documentation",
-    "API Reference",
-    "Blog",
-    "Changelog",
-    "Community",
-    "Pricing",
-    "Resources",
-    "Legal",
-]
+# sections that always appear first, in this order
+_PRIORITY_SECTIONS = ["Overview", "Key Pages"]
 
-# Sections that go under the special "## Optional" heading
+# sections that go under ## Optional regardless of site type
 _OPTIONAL_SECTIONS = {"Legal"}
 
 
@@ -97,28 +82,34 @@ def format_llms_txt(
     """
     lines: List[str] = []
 
-    # --- H1 (required) ---
+    # h1
     lines.append(f"# {site_title or 'Website'}")
     lines.append("")
 
-    # --- Blockquote description (optional) ---
+    # description
     description = site_description or _excerpt(homepage_main_text, max_chars=500)
     if description:
         lines.append(f"> {description}")
         lines.append("")
 
-    # --- Sort sections ---
-    def _rank(section: str) -> int:
-        try:
-            return _SECTION_ORDER.index(section)
-        except ValueError:
-            return len(_SECTION_ORDER)
+    # priorirty sections first (Overview, Key Pages), then remaining sections
+    # by average page score descending, with Optional sections always last.
+    def _avg_score(section: str) -> float:
+        pages = pages_by_section[section]
+        return sum(p.score for p in pages) / len(pages) if pages else 0.0
+
+    def _rank(section: str) -> tuple:
+        if section in _PRIORITY_SECTIONS:
+            return (0, _PRIORITY_SECTIONS.index(section), 0.0)
+        if section in _OPTIONAL_SECTIONS:
+            return (2, 0, 0.0)
+        return (1, 0, -_avg_score(section))  # negative so higher avg sorts first
 
     all_sections = sorted(pages_by_section.keys(), key=_rank)
     main_sections = [s for s in all_sections if s not in _OPTIONAL_SECTIONS]
     optional_sections = [s for s in all_sections if s in _OPTIONAL_SECTIONS]
 
-    # --- Render a section block ---
+    # render a section block
     def _render_section(name: str, pages: List[PageNode], include_desc: bool = True) -> None:
         if not pages:
             return
@@ -134,11 +125,11 @@ def format_llms_txt(
                 lines.append(f"- [{label}]({url})")
         lines.append("")
 
-    # --- Main sections (with descriptions) ---
+    # main sections with descriptions
     for section in main_sections:
         _render_section(section, pages_by_section[section], include_desc=True)
 
-    # --- Optional section (secondary content, no descriptions needed) ---
+    # optional section with no descriptions
     if optional_sections:
         optional_pages: List[PageNode] = []
         for section in optional_sections:
@@ -154,7 +145,7 @@ def format_llms_txt(
                 lines.append(f"- [{label}]({url})")
             lines.append("")
 
-    # --- Metadata / structure (keep at bottom) ---
+    # matadata (sitemap and rss feeds)
     if sitemap_url:
         lines.append("## Sitemap")
         lines.append("")

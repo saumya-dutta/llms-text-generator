@@ -80,7 +80,7 @@ def _compute_score(node: PageNode) -> Tuple[float, List[str]]:
 
     return score, reasons
 
-def _should_exclude(node: PageNode) -> Tuple[bool, str]:
+def _should_exclude(node: PageNode) -> bool:
     """
     excluded if:
     1. failed fetches
@@ -88,7 +88,7 @@ def _should_exclude(node: PageNode) -> Tuple[bool, str]:
     3. excluded path patterns from _EXCLUDED_PATH_RE
     4. thin content (less than 30 words and no title or h1)
     """
-    return (
+    return bool(
         node.fetch_status != "ok" or
         not node.allowed_by_robots or
         _EXCLUDED_PATH_RE.search(node.path) or
@@ -142,11 +142,6 @@ def _trim_section(pages: List[PageNode]) -> None:
     del pages[_MAX_SECTION_PAGES:]
 
 
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
 def rank(pages_by_url: Dict[str, PageNode]) -> Dict[str, List[PageNode]]:
     """
     1. Score every page.
@@ -155,37 +150,36 @@ def rank(pages_by_url: Dict[str, PageNode]) -> Dict[str, List[PageNode]]:
     4. Group survivors by section (derived by crawler from nav + path segments).
     5. Sort each section by score desc, then trim to the most valuable pages.
     """
-    # Score all pages (even excluded ones, for debugging)
+    # score all pages (even excluded ones, for debugging)
     for node in pages_by_url.values():
         node.score, node.score_reasons = _compute_score(node)
 
-    # Filter and deduplicate
+    # filter and deduplicate
     canonical_map: Dict[str, PageNode] = {}
     for url, node in pages_by_url.items():
-        excluded, reason = _should_exclude(node)
-        if excluded:
-            node.excluded_reason = reason
+        if _should_exclude(node):
+            node.excluded = True
             continue
 
         key = _canonical_key(node, url)
         if key in canonical_map:
             existing = canonical_map[key]
             if node.score > existing.score:
-                existing.excluded_reason = "duplicate_canonical_loser"
+                existing.excluded = True
                 canonical_map[key] = node
             else:
-                node.excluded_reason = "duplicate_canonical_loser"
+                node.excluded = True
         else:
             canonical_map[key] = node
 
-    # Group into sections using the crawler-derived section names
+    # group into sections using the crawler-derived section names
     pages_by_section: Dict[str, List[PageNode]] = {}
     for node in canonical_map.values():
         node.is_relevant = True
         section = node.section or "Other"
         pages_by_section.setdefault(section, []).append(node)
 
-    # Sort each section by score descending, then trim to best pages
+    # sort each section by score descending, then trim to best pages
     for pages in pages_by_section.values():
         pages.sort(key=lambda n: n.score, reverse=True)
         _trim_section(pages)
