@@ -32,7 +32,7 @@ UI runs at `http://localhost:5173`. The Vite dev server proxies `/generate` to t
 
 ## Tech Spec
 
-<!-- Add Google Doc link here -->
+for presentation reference: [Initial Tech Spec](https://docs.google.com/document/d/1d0cQQoS81y_-g-1tm5WPVeCB4KEwmCsiGVGw0pzCBJI/edit?usp=sharing) 
 
 ## Screenshots / Demo Video
 
