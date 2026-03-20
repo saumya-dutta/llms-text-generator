@@ -19,6 +19,27 @@ from typing import Dict, List, Optional
 from crawler import PageNode
 
 
+def _dominant_template(descs: List[str]) -> str:
+    """
+    Return a representative description if 60%+ of descriptions in a section
+    are highly similar (word-overlap Jaccard > 0.6), indicating a site template.
+    Returns the longest description as the representative, else empty string.
+    """
+    clean = [d for d in descs if d]
+    if len(clean) < 3:
+        return ""
+    ref_words = set(clean[0].lower().split())
+    similar = sum(
+        1 for d in clean[1:]
+        if (lambda w: len(ref_words & w) / len(ref_words | w) if (ref_words | w) else 0)(
+            set(d.lower().split())
+        ) > 0.6
+    )
+    if similar >= len(clean) * 0.6:
+        return max(clean, key=len)
+    return ""
+
+
 def _excerpt(text: str, max_chars: int = 500) -> str:
     text = " ".join((text or "").split()).strip()
     if not text:
@@ -115,6 +136,16 @@ def format_llms_txt(
             return
         lines.append(f"## {name}")
         lines.append("")
+
+        all_descs = [
+            node.meta_description or _excerpt(node.main_text, max_chars=160)
+            for node in pages
+        ]
+        shared = _dominant_template(all_descs) if include_desc else ""
+        if shared:
+            lines.append(f"> {shared}")
+            lines.append("")
+
         for node in pages:
             raw_label = node.title or node.h1 or node.path
             label = _clean_title(raw_label, site_title)
@@ -122,7 +153,7 @@ def format_llms_txt(
             desc = node.meta_description or (
                 _excerpt(node.main_text, max_chars=160) if node.main_text else ""
             )
-            if include_desc and desc:
+            if include_desc and desc and not shared:
                 lines.append(f"- [{label}]({url}): {desc}")
             else:
                 lines.append(f"- [{label}]({url})")

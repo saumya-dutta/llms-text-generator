@@ -65,7 +65,7 @@ _EXCLUDED_PATH_RE = re.compile(
     r"/login|/signin|/signup|/register"
     r"|/account(?:/|$)|/cart(?:/|$)|/checkout(?:/|$)"
     r"|/search(?:/|$|\?)"
-    r"|/tags?(?:/|$)|/archive(?:/|$)|/categories?(?:/|$)|/changelog(?:/|$)"
+    r"|/tags?(?:/|$)|/archive(?:/|$)|/changelog(?:/|$)"
     r"|/author(?:/|$)"
     r"|\.(?:pdf|zip|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|css|js)$",
     re.IGNORECASE,
@@ -246,6 +246,10 @@ def _extract(
     # nav_links and internal_links must be extracted before nav/header/footer
     # are removed, so links that only exist in the nav are still discovered.
 
+    _SKIP_NAV_RE = re.compile(
+        r"^skip\s+(to\s+)?(main\s+)?(content|navigation|nav)$", re.IGNORECASE
+    )
+
     # nav links with anchor text — collected from <nav> and <header> only.
     nav_links: Dict[str, str] = {}
     for nav_el in soup.find_all(["nav", "header"]):
@@ -256,7 +260,7 @@ def _extract(
                 norm = normalize_url(href)
                 raw = a.get_text(separator="\n", strip=True)
                 text = next((l for l in raw.splitlines() if l.strip()), "").strip()
-                if text and norm not in nav_links:
+                if text and norm not in nav_links and not _SKIP_NAV_RE.match(text):
                     nav_links[norm] = text
 
     # all internal links (deduplicated, order-preserved)
@@ -561,6 +565,9 @@ async def crawl(
                 break
             pages_by_url[url] = node
 
+        start_path_segments = [s for s in urlparse(norm_start).path.split("/") if s]
+        base_depth = len(start_path_segments)  # 0 for "/", 1 for "/en-us/", etc.
+
         # post-processing
         for url, node in pages_by_url.items():
             if url in homepage_links:
@@ -568,10 +575,10 @@ async def crawl(
             node.nav_link_count = nav_link_counts.get(url, 0)
             node.internal_inlink_count = inlink_counts.get(url, 0)
             node.section = _derive_section(node.path, homepage_nav_labels)
-            # single-segment paths are top-level hub pages — always "Key Pages"
-            # regardless of whether the nav is JS-rendered or not.
+            # Pages exactly one level below the site root (accounting for locale
+            # prefixes like /en-us/) are top-level hub pages → always "Key Pages".
             n_segments = len([s for s in node.path.split("/") if s])
-            if n_segments == 1:
+            if n_segments == base_depth + 1:
                 node.section = "Key Pages"
 
         sitemap_sourced = sum(1 for n in pages_by_url.values() if n.in_sitemap)

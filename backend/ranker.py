@@ -134,6 +134,23 @@ def _trim_section(pages: List[PageNode]) -> None:
             del pages[_MAX_REPETITIVE_PAGES:]
             return
 
+        # path-prefix repetition: if 3+ pages share the same first two path segments
+        # (e.g. /img/12345/..., /img/67890/...) the section is a gallery/asset listing.
+        # cap tightly even though each page has a unique description.
+        prefix_counts: Dict[str, int] = {}
+        for n in pages:
+            segs = [s for s in n.path.split("/") if s]
+            prefix = "/" + segs[0] if segs else "/"
+            prefix_counts[prefix] = prefix_counts.get(prefix, 0) + 1
+        top_prefix, top_prefix_count = max(prefix_counts.items(), key=lambda x: x[1])
+        if top_prefix_count >= 3 and top_prefix_count >= len(pages) * 0.6:
+            logger.info(
+                "Path-prefix repetition in '%s': %d/%d pages share prefix %r — trimming to %d",
+                pages[0].section, top_prefix_count, len(pages), top_prefix, _MAX_REPETITIVE_PAGES,
+            )
+            del pages[_MAX_REPETITIVE_PAGES:]
+            return
+
     top = pages[0].score
     for i in range(1, min(len(pages), _MAX_SECTION_PAGES)):
         if top > 0 and pages[i].score < top * 0.15:
